@@ -25,12 +25,12 @@ async function fetchTweet(tweetId) {
     const data = response.data;
     const apiCode = Number(data?.code);
     if (response.status === 404 || response.status === 401 || response.status === 403 || apiCode === 404) {
-      throw new TweetFetcherError('NOT_FOUND', 'Tweet tidak ditemukan atau bersifat private.');
+      throw new TweetFetcherError('NOT_FOUND', 'Tweet not found or private.');
     }
     if (response.status < 200 || response.status >= 300 || !data?.tweet) {
       throw new TweetFetcherError(
         'API_ERROR',
-        data?.message || 'API fxtwitter tidak dapat mengambil tweet tersebut.'
+        data?.message || 'fxtwitter API could not fetch this tweet.'
       );
     }
 
@@ -39,12 +39,12 @@ async function fetchTweet(tweetId) {
     if (error instanceof TweetFetcherError) throw error;
 
     if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
-      throw new TweetFetcherError('TIMEOUT', 'API fxtwitter terlalu lama merespons.', error);
+      throw new TweetFetcherError('TIMEOUT', 'fxtwitter API timed out.', error);
     }
     if (error.response) {
-      throw new TweetFetcherError('API_ERROR', 'API fxtwitter sedang tidak tersedia.', error);
+      throw new TweetFetcherError('API_ERROR', 'fxtwitter API is unavailable.', error);
     }
-    throw new TweetFetcherError('NETWORK_ERROR', 'Tidak dapat terhubung ke API fxtwitter.', error);
+    throw new TweetFetcherError('NETWORK_ERROR', 'Could not reach the fxtwitter API.', error);
   }
 }
 

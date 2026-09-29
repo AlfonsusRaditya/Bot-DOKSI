@@ -31,18 +31,53 @@ function getSafeExtension(mediaUrl, contentType) {
     const extension = path.extname(new URL(mediaUrl).pathname).toLowerCase();
     if (/^\.[a-z0-9]{1,5}$/.test(extension)) return extension;
   } catch {
-    // Gunakan extension dari Content-Type jika URL tidak memiliki path valid.
+    // Fall back to Content-Type when the URL has no usable path.
   }
   return extensionFromContentType(contentType);
 }
 
-async function fetchMediaBuffer(mediaUrl) {
+async function fetchMediaBuffer(mediaUrl, options = {}) {
+  const { signal } = options;
+  if (signal?.aborted) {
+    const abortError = new Error('canceled');
+    abortError.code = 'ERR_CANCELED';
+    throw abortError;
+  }
+
+  // Fast HEAD check: skip the body download when content-length is already over the limit.
+  try {
+    const head = await axios.head(mediaUrl, {
+      timeout: 10_000,
+      signal,
+      headers: {
+        'User-Agent': 'Discord-Twitter-Media-Forwarder/1.0'
+      },
+      validateStatus: (status) => status >= 200 && status < 300
+    });
+    const contentLength = Number(head.headers['content-length']);
+    if (Number.isFinite(contentLength) && contentLength > MAX_FILE_SIZE) {
+      throw new MediaFetcherError(
+        'TOO_LARGE',
+        'File exceeds the 20 MB Discord limit.',
+        mediaUrl
+      );
+    }
+  } catch (error) {
+    if (error instanceof MediaFetcherError) throw error;
+    // Ignore abort / unsupported HEAD (403/405/timeout) and continue to GET.
+    const isAbort = error?.code === 'ERR_CANCELED'
+      || error?.name === 'CanceledError'
+      || error?.message?.toLowerCase().includes('canceled');
+    if (isAbort) throw error;
+  }
+
   try {
     const response = await axios.get(mediaUrl, {
       responseType: 'arraybuffer',
       timeout: 30_000,
       maxContentLength: MAX_FILE_SIZE,
       maxBodyLength: MAX_FILE_SIZE,
+      signal,
       headers: {
         'User-Agent': 'Discord-Twitter-Media-Forwarder/1.0'
       },
@@ -53,7 +88,7 @@ async function fetchMediaBuffer(mediaUrl) {
     if (buffer.length > MAX_FILE_SIZE) {
       throw new MediaFetcherError(
         'TOO_LARGE',
-        'File melebihi batas 20 MB Discord.',
+        'File exceeds the 20 MB Discord limit.',
         mediaUrl
       );
     }
@@ -67,20 +102,25 @@ async function fetchMediaBuffer(mediaUrl) {
   } catch (error) {
     if (error instanceof MediaFetcherError) throw error;
 
+    const isAbort = error?.code === 'ERR_CANCELED'
+      || error?.name === 'CanceledError'
+      || error?.message?.toLowerCase().includes('canceled');
+    if (isAbort) throw error;
+
     if (error.code === 'ERR_FR_MAX_BODY_LENGTH_EXCEEDED'
       || error.code === 'ERR_BAD_RESPONSE'
       || error.message?.toLowerCase().includes('maxcontentlength')) {
       throw new MediaFetcherError(
         'TOO_LARGE',
-        'File melebihi batas 20 MB Discord.',
+        'File exceeds the 20 MB Discord limit.',
         mediaUrl,
         error
       );
     }
     if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
-      throw new MediaFetcherError('TIMEOUT', 'Media terlalu lama diambil.', mediaUrl, error);
+      throw new MediaFetcherError('TIMEOUT', 'Media fetch timed out.', mediaUrl, error);
     }
-    throw new MediaFetcherError('FETCH_ERROR', 'Media gagal diambil.', mediaUrl, error);
+    throw new MediaFetcherError('FETCH_ERROR', 'Failed to fetch media.', mediaUrl, error);
   }
 }
 

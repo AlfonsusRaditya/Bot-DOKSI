@@ -21,31 +21,31 @@ function createEmbed(title, description, color) {
 function getAuthorInfo(tweet) {
   const author = tweet?.author || {};
   const username = author.screen_name || author.username || author.handle || '';
-  const displayName = author.name || username || 'Akun tidak diketahui';
+  const displayName = author.name || username || 'Unknown account';
   return { username, displayName };
 }
 
 function truncateText(text, maxLength = 1_000) {
-  if (!text) return 'Tweet tidak memiliki teks.';
+  if (!text) return 'Tweet has no text.';
   return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
 }
 
 function createEmbedLink(tweet, tweetId) {
   const { username } = getAuthorInfo(tweet);
-  return `https://fxtwitter.com/${username || 'i'}/status/${tweetId}`;
+  return `https://fixupx.com/${username || 'i'}/status/${tweetId}`;
 }
 
 function createSuccessEmbed(tweet, mediaCount) {
   const { username, displayName } = getAuthorInfo(tweet);
   const embed = createEmbed(
-    '✅ Media Berhasil Dikirim',
+    'Media delivered',
     truncateText(tweet.text),
     COLORS.success
   );
 
   embed.addFields(
-    { name: 'Akun', value: username ? `${displayName} (@${username})` : displayName, inline: true },
-    { name: 'Jumlah Media', value: String(mediaCount), inline: true }
+    { name: 'Account', value: username ? `${displayName} (@${username})` : displayName, inline: true },
+    { name: 'Media count', value: String(mediaCount), inline: true }
   );
 
   if (tweet.url) embed.setURL(tweet.url);
@@ -55,17 +55,17 @@ function createSuccessEmbed(tweet, mediaCount) {
 
 function getErrorDescription(error) {
   if (error instanceof TweetFetcherError) {
-    if (error.code === 'NOT_FOUND') return 'Tweet tidak ditemukan atau bersifat private.';
-    if (error.code === 'TIMEOUT') return 'API fxtwitter terlalu lama merespons. Coba lagi nanti.';
+    if (error.code === 'NOT_FOUND') return 'Tweet not found or private.';
+    if (error.code === 'TIMEOUT') return 'fxtwitter API timed out. Please try again later.';
     if (error.code === 'API_ERROR' || error.code === 'NETWORK_ERROR') {
-      return 'API fxtwitter sedang tidak tersedia atau gagal dihubungi. Coba lagi nanti.';
+      return 'fxtwitter API is unavailable. Please try again later.';
     }
   }
   if (error instanceof MediaFetcherError) {
-    if (error.code === 'TIMEOUT') return 'Media terlalu lama diambil. Coba lagi nanti.';
-    return 'Media gagal diambil dari URL sumbernya.';
+    if (error.code === 'TIMEOUT') return 'Media fetch timed out. Please try again later.';
+    return 'Failed to fetch media from the source URL.';
   }
-  return 'Terjadi kesalahan saat mengambil media. Silakan coba lagi nanti.';
+  return 'An error occurred while fetching media. Please try again later.';
 }
 
 function createAttachments(mediaBuffers) {
@@ -85,13 +85,13 @@ function splitIntoChunks(items, size) {
 
 async function execute(message, urlInput) {
   const loading = await message.reply({
-    embeds: [createEmbed('⏳ Mengambil Media', 'Sedang mengambil data tweet dan media dari fxtwitter...', COLORS.loading)]
+    embeds: [createEmbed('Fetching media', 'Fetching tweet and media from fxtwitter...', COLORS.loading)]
   });
 
   try {
     const parsed = parseTweetUrl(urlInput);
     if (!parsed.valid) {
-      await loading.edit({ embeds: [createEmbed('❌ URL Tidak Valid', parsed.error, COLORS.error)] });
+      await loading.edit({ embeds: [createEmbed('Invalid URL', parsed.error, COLORS.error)] });
       return;
     }
 
@@ -99,27 +99,39 @@ async function execute(message, urlInput) {
     const media = extractMedia(tweet);
     if (media.length === 0) {
       await loading.edit({
-        embeds: [createEmbed('❌ Media Tidak Ditemukan', 'Tweet tersebut hanya berisi teks atau medianya tidak tersedia.', COLORS.error)]
+        embeds: [createEmbed('No media found', 'This tweet contains only text or its media is unavailable.', COLORS.error)]
       });
       return;
     }
 
-    const results = await Promise.allSettled(media.map((item) => fetchMediaBuffer(item.url)));
-    const failures = results.filter((result) => result.status === 'rejected');
-
-    const hasTooLarge = failures.some((failure) => (
-      failure.reason instanceof MediaFetcherError && failure.reason.code === 'TOO_LARGE'
+    const controller = new AbortController();
+    const isAbortError = (error) => (
+      error?.code === 'ERR_CANCELED'
+      || error?.name === 'CanceledError'
+      || error?.message?.toLowerCase().includes('canceled')
+    );
+    const tasks = media.map((item) => (
+      fetchMediaBuffer(item.url, { signal: controller.signal }).catch((error) => {
+        // An abort after early exit is not a real failure.
+        if (isAbortError(error)) return { aborted: true };
+        throw error;
+      })
     ));
-    if (hasTooLarge) {
-      await message.channel.send({ content: createEmbedLink(tweet, parsed.tweetId) });
-      await loading.delete().catch(() => {});
-      await message.delete().catch(() => {});
-      return;
+
+    let mediaBuffers;
+    try {
+      mediaBuffers = await Promise.all(tasks);
+    } catch (error) {
+      controller.abort();
+      if (error instanceof MediaFetcherError && error.code === 'TOO_LARGE') {
+        await message.channel.send({ content: createEmbedLink(tweet, parsed.tweetId) });
+        await loading.delete().catch(() => {});
+        await message.delete().catch(() => {});
+        return;
+      }
+      throw error;
     }
 
-    if (failures.length > 0) throw failures[0].reason;
-
-    const mediaBuffers = results.map((result) => result.value);
     const attachments = createAttachments(mediaBuffers);
     const chunks = splitIntoChunks(attachments, MAX_ATTACHMENTS_PER_MESSAGE);
     const successEmbed = createSuccessEmbed(tweet, media.length);
@@ -133,9 +145,9 @@ async function execute(message, urlInput) {
     await loading.delete().catch(() => {});
     await message.delete().catch(() => {});
   } catch (error) {
-    console.error('❌ Error saat menjalankan !dl:', error);
+    console.error('Error running !dl:', error);
     await loading.edit({
-      embeds: [createEmbed('❌ Gagal Mengambil Media', getErrorDescription(error), COLORS.error)]
+      embeds: [createEmbed('Failed to fetch media', getErrorDescription(error), COLORS.error)]
     }).catch(() => {});
   }
 }

@@ -1,7 +1,7 @@
 {
   "name": "discord-media-bot",
-  "version": "1.0.0",
-  "description": "Discord bot untuk meneruskan media Twitter/X tanpa menyimpan file ke disk.",
+  "version": "1.1.0",
+  "description": "Discord bot that forwards Twitter/X media without saving files to disk.",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",

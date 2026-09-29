@@ -10,31 +10,31 @@ const ALLOWED_HOSTS = new Set([
 ]);
 
 /**
- * Mengambil ID tweet dari URL Twitter/X, fixupx.com, atau fxtwitter.com.
+ * Extracts the tweet ID from a Twitter/X, fixupx.com, or fxtwitter.com URL.
  */
 function parseTweetUrl(input) {
   if (!input || typeof input !== 'string') {
-    return { valid: false, error: 'URL tweet wajib diisi.' };
+    return { valid: false, error: 'Tweet URL is required.' };
   }
 
   let url;
   try {
     url = new URL(input.trim());
   } catch {
-    return { valid: false, error: 'Format URL tidak valid.' };
+    return { valid: false, error: 'Invalid URL format.' };
   }
 
   const hostname = url.hostname.toLowerCase();
   if (!['http:', 'https:'].includes(url.protocol) || !ALLOWED_HOSTS.has(hostname)) {
     return {
       valid: false,
-      error: 'URL harus berasal dari twitter.com, x.com, fixupx.com, atau fxtwitter.com.'
+      error: 'URL must be from twitter.com, x.com, fixupx.com, or fxtwitter.com.'
     };
   }
 
   const match = url.pathname.match(/\/status\/(\d+)(?:\/|$)/i);
   if (!match) {
-    return { valid: false, error: 'URL tersebut bukan URL tweet/status yang valid.' };
+    return { valid: false, error: 'Not a valid tweet/status URL.' };
   }
 
   return {
