@@ -1,7 +1,7 @@
 const path = require('node:path');
 const axios = require('axios');
 
-const MAX_FILE_SIZE = 25 * 1024 * 1024;
+const MAX_FILE_SIZE = 20 * 1024 * 1024;
 
 class MediaFetcherError extends Error {
   constructor(code, message, mediaUrl, cause) {
@@ -53,7 +53,7 @@ async function fetchMediaBuffer(mediaUrl) {
     if (buffer.length > MAX_FILE_SIZE) {
       throw new MediaFetcherError(
         'TOO_LARGE',
-        'File melebihi batas 25 MB Discord.',
+        'File melebihi batas 20 MB Discord.',
         mediaUrl
       );
     }
@@ -72,7 +72,7 @@ async function fetchMediaBuffer(mediaUrl) {
       || error.message?.toLowerCase().includes('maxcontentlength')) {
       throw new MediaFetcherError(
         'TOO_LARGE',
-        'File melebihi batas 25 MB Discord.',
+        'File melebihi batas 20 MB Discord.',
         mediaUrl,
         error
       );

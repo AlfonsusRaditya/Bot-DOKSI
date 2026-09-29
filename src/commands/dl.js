@@ -30,6 +30,11 @@ function truncateText(text, maxLength = 1_000) {
   return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
 }
 
+function createEmbedLink(tweet, tweetId) {
+  const { username } = getAuthorInfo(tweet);
+  return `https://fxtwitter.com/${username || 'i'}/status/${tweetId}`;
+}
+
 function createSuccessEmbed(tweet, mediaCount) {
   const { username, displayName } = getAuthorInfo(tweet);
   const embed = createEmbed(
@@ -49,9 +54,6 @@ function createSuccessEmbed(tweet, mediaCount) {
 }
 
 function getErrorDescription(error) {
-  if (error instanceof MediaFetcherError && error.code === 'TOO_LARGE') {
-    return `File terlalu besar untuk dikirim di Discord (maksimal 25 MB).\nURL media langsung:\n${error.mediaUrl}`;
-  }
   if (error instanceof TweetFetcherError) {
     if (error.code === 'NOT_FOUND') return 'Tweet tidak ditemukan atau bersifat private.';
     if (error.code === 'TIMEOUT') return 'API fxtwitter terlalu lama merespons. Coba lagi nanti.';
@@ -102,7 +104,22 @@ async function execute(message, urlInput) {
       return;
     }
 
-    const mediaBuffers = await Promise.all(media.map((item) => fetchMediaBuffer(item.url)));
+    const results = await Promise.allSettled(media.map((item) => fetchMediaBuffer(item.url)));
+    const failures = results.filter((result) => result.status === 'rejected');
+
+    const hasTooLarge = failures.some((failure) => (
+      failure.reason instanceof MediaFetcherError && failure.reason.code === 'TOO_LARGE'
+    ));
+    if (hasTooLarge) {
+      await message.channel.send({ content: createEmbedLink(tweet, parsed.tweetId) });
+      await loading.delete().catch(() => {});
+      await message.delete().catch(() => {});
+      return;
+    }
+
+    if (failures.length > 0) throw failures[0].reason;
+
+    const mediaBuffers = results.map((result) => result.value);
     const attachments = createAttachments(mediaBuffers);
     const chunks = splitIntoChunks(attachments, MAX_ATTACHMENTS_PER_MESSAGE);
     const successEmbed = createSuccessEmbed(tweet, media.length);
