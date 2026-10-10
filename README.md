@@ -1,57 +1,64 @@
 # Discord Twitter/X Media Forwarder
 
-Bot Discord berbasis Node.js dan Discord.js v14 untuk meneruskan semua media dari tweet Twitter/X melalui API fxtwitter, tanpa menyimpan file ke disk.
+Node.js + Discord.js v14 bot that forwards all media from a Twitter/X tweet via the fxtwitter API, without saving files to disk.
 
-## Fitur
+## Features
 
-- Command prefix: `!dl <url>`
-- Mendukung `twitter.com`, `x.com`, `fixupx.com`, dan `fxtwitter.com`
-- Mengambil metadata tweet melalui `https://api.fxtwitter.com/status/{tweet_id}`
-- Mengunduh media langsung ke memory sebagai `Buffer` menggunakan `axios`
-- Mengirim foto, video, dan GIF menggunakan `AttachmentBuilder`
-- Maksimal 10 attachment per pesan Discord; jika media lebih dari 10, bot mengirim beberapa pesan
-- Menolak file di atas 25 MB dan menampilkan URL media langsung
-- Tidak menggunakan `yt-dlp`, tidak membuat folder `temp/`, dan tidak menyimpan file ke disk
+- Prefix command: `!dl <url>`
+- Supports `twitter.com`, `x.com`, `fixupx.com`, and `fxtwitter.com`
+- Fetches tweet metadata via `https://api.fxtwitter.com/status/{tweet_id}`
+- Fast size pre-check via `HEAD content-length` before downloading the body
+- Fail-fast parallel media download with `AbortController`; remaining downloads are canceled once one file fails
+- Sends photos, videos, and GIFs with `AttachmentBuilder`
+- Up to 10 attachments per Discord message; sends multiple messages when there are more
+- Files over 20 MB fall back to a `fixupx.com` link instead of an upload
+- No `yt-dlp`, no `temp/` folder, no disk writes
 
-## Persyaratan
+## Requirements
 
-- Node.js 18 atau lebih baru
+- Node.js 18 or newer
 - npm
-- Bot Discord dengan `Message Content Intent` aktif di Discord Developer Portal
+- Discord bot with `Message Content Intent` enabled in the Discord Developer Portal
+- Bot permissions: `Send Messages`, `Embed Links`, `Attach Files`, `Manage Messages` (the last one is used to remove the loading reply and the original command)
 
-## Instalasi
+## Install
 
 ```bash
 npm install
 ```
 
-## Setup `.env`
+## Configure `.env`
 
-Salin `.env.example` menjadi `.env`, kemudian isi token bot Discord:
+Copy `.env.example` to `.env`, then set the bot token:
 
 ```env
-BOT_TOKEN=token_bot_discord_anda
+BOT_TOKEN=your_discord_bot_token
 PREFIX=!
 ```
 
-Jangan membagikan token bot dan jangan commit file `.env` ke repository.
+Do not share the token and do not commit `.env`.
 
-## Menjalankan bot
+## Run
 
 ```bash
 npm start
 ```
 
-Untuk mode development:
+Development mode:
 
 ```bash
 npm run dev
 ```
 
-Contoh command di Discord:
+Example command in Discord:
 
 ```text
 !dl https://twitter.com/username/status/123456789
 ```
 
-Bot akan menampilkan embed status, mengambil tweet dari API fxtwitter, mengirim media sebagai attachment, lalu menghapus pesan loading dan command asli jika permission Discord mengizinkan.
+The bot replies with a loading message, fetches the tweet, sends the media as attachments with a status embed, then deletes the loading reply and the original command when permissions allow. If any file exceeds 20 MB, it sends a `fixupx.com` link fallback instead.
+
+## Notes
+
+- Only one instance must run per token. Running two copies (for example local + VPS, or `src/` + `dist/`) causes duplicate replies.
+- Large or slow media can still take several seconds: total wait time is determined by the slowest download plus the Discord upload.
